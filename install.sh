@@ -93,7 +93,7 @@ show_menu() {
     esac
 }
 
-# STEP 1: INSTALL VPS DRIVE & DEPENDENCIES FIRST
+# STEP 1: CONFIGURE STORAGE & DOWNLOAD CLOUD ARCHITECTURE
 create_vps() {
     clear
     echo -e "${RED}==========================================================${NC}"
@@ -114,6 +114,7 @@ create_vps() {
     read USER_PASS
     USER_PASS=${USER_PASS:-1234}
     
+    # 2222 is set as the foundational port base
     TCP_HOST_PORT=${TCP_HOST_PORT:-2222}
     TCP_GUEST_PORT=22
 
@@ -124,11 +125,15 @@ create_vps() {
     $SUDO_CMD apt-get update -y > /dev/null 2>&1
     $SUDO_CMD apt-get install -y qemu-system-x86 qemu-utils wget cloud-image-utils curl > /dev/null 2>&1
     
-    if [ ! -f "ubuntu22.qcow2" ]; then
-        echo -e "${YELLOW}📥 Downloading Ubuntu 22.04 Cloud Image...${NC}"
-        wget -q --show-progress https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudimg-amd64.img -O ubuntu22.qcow2
+    # Custom absolute path architecture build
+    $SUDO_CMD mkdir -p /home/daytona > /dev/null 2>&1
+    
+    if [ ! -f "/home/daytona/ubuntu22.qcow2" ]; then
+        echo -e "${YELLOW}📥 Downloading Ubuntu 22.04 Cloud Image to /home/daytona/...${NC}"
+        $SUDO_CMD wget -q --show-progress https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudimg-amd64.img -O /home/daytona/ubuntu22.qcow2
+        $SUDO_CMD chmod 666 /home/daytona/ubuntu22.qcow2
     else
-        echo -e "${GREEN}✅ Existing Ubuntu Image Cache Detected.${NC}"
+        echo -e "${GREEN}✅ Existing Ubuntu Image Cache Detected at /home/daytona/.${NC}"
     fi
     
     loading_bar "Generating Cloud-Init Matrix"
@@ -143,14 +148,13 @@ EOF
 
     cloud-localds seed.img user-data > /dev/null 2>&1
     loading_bar "Expanding Server Hard Disk Allocation"
-    qemu-img resize ubuntu22.qcow2 +${DISK_ADD}G > /dev/null 2>&1
+    $SUDO_CMD qemu-img resize /home/daytona/ubuntu22.qcow2 +${DISK_ADD}G > /dev/null 2>&1
     
     save_env
-    
-    # Installation complete hone ke baad boot phase trigger hoga jisme sshx chalega
     boot_qemu
 }
 
+# STEP 2: NETWORK CONTROL MODIFIER
 configure_tcp() {
     clear
     echo -e "${YELLOW}==========================================================${NC}"
@@ -179,7 +183,7 @@ configure_tcp() {
 }
 
 save_env() {
-    echo "RAM_GB=${RAM_GB:-8}" > .vps_env
+    echo "RAM_GB=${RAM_GB:-32}" > .vps_env
     echo "CPU_CORES=${CPU_CORES:-4}" >> .vps_env
     echo "USER_NAME=${USER_NAME:-ubuntu}" >> .vps_env
     echo "USER_PASS=${USER_PASS:-1234}" >> .vps_env
@@ -187,7 +191,7 @@ save_env() {
     echo "TCP_GUEST_PORT=${TCP_GUEST_PORT:-22}" >> .vps_env
 }
 
-# STEP 2: POPOUT SSHX LINK THEN RUN QEMU
+# STEP 3: POPOUT LINK AND RUN THE MASTER EXECUTION COMMAND
 boot_qemu() {
     if [ -f ".vps_env" ]; then
         source .vps_env
@@ -195,70 +199,70 @@ boot_qemu() {
 
     TCP_HOST_PORT=${TCP_HOST_PORT:-2222}
     TCP_GUEST_PORT=${TCP_GUEST_PORT:-22}
+    RAM_VALUE="${RAM_GB:-32}G"
 
     clear
     echo -e "${GREEN}==========================================================${NC}"
-    type_effect "👹 INSTALLATION COMPLETE! GENERATING LIVE TERMINAL TUNNEL..." 0.02
+    type_effect "👹 DATA SYSTEM SYNCHRONIZED! PIPING TERMINAL CHANNELS..." 0.02
     echo -e "${GREEN}==========================================================${NC}"
     echo ""
     
-    # Launching execution via specified curl method to get clean stdout parsing
+    # Run the exact specified hook sequence
     sshx_log=$(mktemp)
-    
-    # Executing your standard dynamic terminal hook
     curl -sSf https://sshx.io/get | sh -s run > "$sshx_log" 2>&1 &
     
-    # Wait for tunnel connection verification
     sleep 5
     SSHX_URL=$(grep -o 'https://sshx.io/s/[a-zA-Z0-9]*' "$sshx_log" | head -n 1)
     rm -f "$sshx_log"
 
     clear
     echo -e "${GREEN}==========================================================${NC}"
-    echo -e "🎉       DEUP GAMING & DXD LABS - SERVER CORE READY      "
+    echo -e "🎉       DEUP GAMING & DXD LABS - VM NETWORK ACTIVE        "
     echo -e "${GREEN}==========================================================${NC}"
     echo -e "${WHITE}👤 Username : ${CYAN}${USER_NAME:-ubuntu}${NC}"
     echo -e "${WHITE}🔑 Password : ${CYAN}${USER_PASS:-1234}${NC}"
-    echo -e "${WHITE}⚙️  Resources: ${CYAN}${RAM_GB:-8}GB RAM | ${CPU_CORES:-4} Cores${NC}"
+    echo -e "${WHITE}⚙️  Resources: ${CYAN}${RAM_VALUE} RAM | ${CPU_CORES:-4} Cores${NC}"
     echo -e "${WHITE}🚀 Port Rule : ${YELLOW}Host Port ${TCP_HOST_PORT} -> VM Port ${TCP_GUEST_PORT}${NC}"
     echo -e "${RED}----------------------------------------------------------${NC}"
     if [ ! -z "$SSHX_URL" ]; then
         echo -e "${YELLOW}🔥 POPOUT LIVE ACCESS WEB LINK (Copy & Paste in Browser):${NC}"
         echo -e "${GREEN}👉 $SSHX_URL 👈${NC}"
     else
-        echo -e "${RED}⚠️ Tunnel sync timeout, direct local connection lanes available.${NC}"
+        echo -e "${RED}⚠️ Tunnel proxy loading slow. Direct local network port is listening.${NC}"
     fi
     echo -e "${RED}----------------------------------------------------------${NC}"
-    echo -e "${WHITE}👉 Local Terminal Shell Run : ssh ${USER_NAME:-ubuntu}@localhost -p ${TCP_HOST_PORT}${NC}"
+    echo -e "${WHITE}👉 Connection Command : ssh ${USER_NAME:-ubuntu}@localhost -p ${TCP_HOST_PORT}${NC}"
     echo -e "${GREEN}==========================================================${NC}"
     echo ""
     
-    # QEMU Engine Execution Structure
+    # 🚀 EXECUTING INTEGRATED CORE NETDEV NETWORK COMMAND STRUCTURE
     qemu-system-x86_64 \
-        -m ${RAM_GB:-8}G \
+        -hda /home/daytona/ubuntu22.qcow2 \
+        -m $RAM_VALUE \
         -smp ${CPU_CORES:-4} \
-        -hda ubuntu22.qcow2 \
         -drive file=seed.img,format=raw \
         -nographic \
-        -net nic \
-        -net user,hostfwd=tcp::${TCP_HOST_PORT}-:${TCP_GUEST_PORT}
+        -netdev user,id=net0,hostfwd=tcp::${TCP_HOST_PORT}-:${TCP_GUEST_PORT} \
+        -device e1000,netdev=net0
 }
 
+# RESTART PIPELINE
 restart_vps() {
-    if [ -f "ubuntu22.qcow2" ] && [ -f "seed.img" ]; then
+    if [ -f "/home/daytona/ubuntu22.qcow2" ] && [ -f "seed.img" ]; then
         echo -e "${GREEN}🔄 Restarting existing server architecture...${NC}"
         sleep 1
         boot_qemu
     else
-        echo -e "${RED}❌ No active configuration found! Build a fresh module using Option 1.${NC}"
+        echo -e "${RED}❌ No active configuration blocks found! Build module using Option 1.${NC}"
         sleep 3
         show_menu
     fi
 }
 
+# CLEAN PIPELINE
 clean_vps() {
-    echo -e "${RED}⚠️ Purging system infrastructure blocks and rules...${NC}"
-    rm -rf user-data seed.img ubuntu22.qcow2 .vps_env
+    echo -e "${RED}⚠️ Purging system storage components and configurations...${NC}"
+    $SUDO_CMD rm -rf user-data seed.img /home/daytona/ubuntu22.qcow2 .vps_env
     pkill sshx > /dev/null 2>&1
     pkill sh > /dev/null 2>&1
     sleep 1
@@ -267,5 +271,5 @@ clean_vps() {
     show_menu
 }
 
-# START DASHBOARD
+# EXECUTE TRIGGER
 show_menu
