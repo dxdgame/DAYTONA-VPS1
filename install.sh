@@ -71,63 +71,69 @@ show_menu() {
     echo -e "${CYAN} |____/|_____|\___/|_|      \____/_/   \_\_|  |_|___|_| \_|\____|${NC}"
     echo -e "${RED}==========================================================${NC}"
     echo ""
-    echo -e "${YELLOW}👉 CHOOSE OPERATING SYSTEM & TERMINAL ACCESS:${NC}"
+    echo -e "${YELLOW}👉 SELECT AN OPTION TO PROCEED FROM LIST:${NC}"
     echo ""
-    echo -e "  ${CYAN}[1]${NC} Create & Boot ${GREEN}Ubuntu Linux 22.04${NC} VPS Instance"
-    echo -e "  ${CYAN}[2]${NC} Create & Boot ${BLUE}Windows 11 Pro${NC} Virtual Environment"
-    echo -e "  ${CYAN}[3]${NC} Restart Existing Active Instance"
-    echo -e "  ${CYAN}[4]${NC} Wipe Environment & Clean Caches"
-    echo -e "  ${CYAN}[5]${NC} Exit Dashboard"
+    echo -e "  ${CYAN}[1]${NC} Create & Boot New Ubuntu VPS Instance"
+    echo -e "  ${CYAN}[2]${NC} Restart Existing VPS Instance"
+    echo -e "  ${CYAN}[3]${NC} Remove/Clean VPS Cache Files"
+    echo -e "  ${CYAN}[4]${NC} Exit Dashboard"
     echo ""
     echo -e "${RED}==========================================================${NC}"
-    echo -ne "${WHITE}🔹 Enter Choice [1-5]: ${NC}"
+    echo -ne "${WHITE}🔹 Enter Choice [1-4]: ${NC}"
     read CHOICE
     
     case $CHOICE in
-        1) create_ubuntu ;;
-        2) create_windows ;;
-        3) restart_vps ;;
-        4) clean_vps ;;
-        5) exit 0 ;;
-        *) echo -e "${RED}❌ Invalid Choice! Please select 1-5.${NC}"; sleep 2; show_menu ;;
+        1) create_vps ;;
+        2) restart_vps ;;
+        3) clean_vps ;;
+        4) exit 0 ;;
+        *) echo -e "${RED}❌ Invalid Choice! Please select 1, 2, 3, or 4.${NC}"; sleep 2; show_menu ;;
     esac
 }
 
-# BASIC INPUTS COLLECTOR FUNCTION
-get_specs() {
+# CONFIGURATION FOR NEW VPS
+create_vps() {
+    clear
+    echo -e "${RED}==========================================================${NC}"
+    echo -e "${WHITE}⚙️  CONFIGURE YOUR VIRTUAL MACHINE SPECIFICATIONS${NC}"
+    echo -e "${RED}==========================================================${NC}"
+    echo ""
+    
     echo -ne "${BLUE}🔹 Enter RAM Size in GB (e.g., 4, 8, 16, 32): ${NC}"
     read RAM_GB
     echo -ne "${BLUE}🔹 Enter CPU Cores (e.g., 2, 4, 8): ${NC}"
     read CPU_CORES
-    
-    echo ""
-    echo -e "${YELLOW}⏳ Preparing QEMU Core Elements... Please wait.${NC}"
-    $SUDO_CMD apt-get update -y > /dev/null 2>&1
-    $SUDO_CMD apt-get install -y qemu-system-x86 qemu-utils wget cloud-image-utils > /dev/null 2>&1
-}
-
-# OPTION 1: UBUNTU VPS ARCHITECTURE
-create_ubuntu() {
-    clear
-    echo -e "${GREEN}==========================================================${NC}"
-    echo -e "${WHITE}🐧 UBUNTU LINUX ENVIRONMENT SPECIFICATIONS${NC}"
-    echo -e "${GREEN}==========================================================${NC}"
-    get_specs
-    
-    echo -ne "${BLUE}🔹 Enter Disk Space to ADD in GB (e.g., 20): ${NC}"
+    echo -ne "${BLUE}🔹 Enter Disk Space to ADD in GB (e.g., 10, 20): ${NC}"
     read DISK_ADD
-    echo -ne "${BLUE}🔹 Create Username: ${NC}"
+    echo -ne "${BLUE}🔹 Create Username (Default: ubuntu): ${NC}"
     read USER_NAME
     USER_NAME=${USER_NAME:-ubuntu}
-    echo -ne "${BLUE}🔹 Create Password: ${NC}"
+    echo -ne "${BLUE}🔹 Create Password (Default: 1234): ${NC}"
     read USER_PASS
     USER_PASS=${USER_PASS:-1234}
-
-    if [ ! -f "ubuntu22.qcow2" ]; then
-        echo -e "${YELLOW}📥 Downloading Ubuntu 22.04 Server Cloud Image...${NC}"
-        wget -q --show-progress https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudimg-amd64.img -O ubuntu22.qcow2
+    
+    echo ""
+    echo -e "${YELLOW}⏳ Background dependencies aur SSHX setup ho raha hai... Please wait.${NC}"
+    echo ""
+    
+    # Core environments
+    $SUDO_CMD apt-get update -y > /dev/null 2>&1
+    $SUDO_CMD apt-get install -y qemu-system-x86 qemu-utils wget cloud-image-utils curl > /dev/null 2>&1
+    
+    # SSHX Installation
+    if ! command -v sshx &> /dev/null; then
+        loading_bar "Installing SSHX Web Terminal Engine"
+        curl -sSf https://sshx.io/get | sh > /dev/null 2>&1
     fi
-
+    
+    # Check and download Ubuntu Image
+    if [ ! -f "ubuntu22.qcow2" ]; then
+        echo -e "${YELLOW}📥 Downloading Ubuntu 22.04 Cloud Image...${NC}"
+        wget -q --show-progress https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudimg-amd64.img -O ubuntu22.qcow2
+    else
+        echo -e "${GREEN}✅ Existing Ubuntu Image Cache Detected.${NC}"
+    fi
+    
     loading_bar "Generating Cloud-Init Matrix"
     cat <<EOF > user-data
 #cloud-config
@@ -137,33 +143,69 @@ chpasswd:
     ${USER_NAME}:${USER_PASS}
   expire: False
 EOF
+
     cloud-localds seed.img user-data > /dev/null 2>&1
+    
+    loading_bar "Expanding Server Hard Disk Allocation"
     qemu-img resize ubuntu22.qcow2 +${DISK_ADD}G > /dev/null 2>&1
     
-    # Save system mode
-    echo "OS_MODE=ubuntu" > .vps_env
-    echo "RAM_GB=$RAM_GB" >> .vps_env
+    # Save parameters for potential persistence
+    echo "RAM_GB=$RAM_GB" > .vps_env
     echo "CPU_CORES=$CPU_CORES" >> .vps_env
     echo "USER_NAME=$USER_NAME" >> .vps_env
     echo "USER_PASS=$USER_PASS" >> .vps_env
     
-    boot_ubuntu
+    boot_qemu
 }
 
-boot_ubuntu() {
+# VPS BOOT SYSTEM (WITH LIVE SSHX LINK GENERATION)
+boot_qemu() {
+    if [ -f ".vps_env" ]; then
+        source .vps_env
+    fi
+
+    # Ensuring sshx binary is ready
+    if ! command -v sshx &> /dev/null; then
+        curl -sSf https://sshx.io/get | sh > /dev/null 2>&1
+    fi
+
     clear
     echo -e "${GREEN}==========================================================${NC}"
-    type_effect "👹 UBUNTU MATRIX ONLINE! LINUX SERVER BOOTING!" 0.03
-    echo -e "${GREEN}==========================================================${NC}"
-    echo ""
-    echo -e "${WHITE}👤 Username : ${CYAN}${USER_NAME:-ubuntu}${NC}"
-    echo -e "${WHITE}🔑 Password : ${CYAN}${USER_PASS:-1234}${NC}"
-    echo -e "${WHITE}⚙️  Resources: ${CYAN}${RAM_GB:-8}GB RAM | ${CPU_CORES:-4} Cores${NC}"
-    echo -e "${WHITE}🚀 SSH Connection Port: ${CYAN}2223${NC}"
-    echo -e "${WHITE}👉 Login Command       : ${YELLOW}ssh ${USER_NAME:-ubuntu}@localhost -p 2223${NC}"
+    type_effect "👹 CHARACTER MATRIX SYNCHRONIZED! STARTING WEB TERMINAL..." 0.02
     echo -e "${GREEN}==========================================================${NC}"
     echo ""
     
+    # Start sshx tunnel in background and grab the URL
+    echo -e "${YELLOW}🔗 Generating Live SSHX Web Terminal Link...${NC}"
+    sshx_log=$(mktemp)
+    sshx --quiet > "$sshx_log" 2>&1 &
+    
+    # Wait few seconds to let sshx resolve the URL
+    sleep 4
+    SSHX_URL=$(grep -o 'https://sshx.io/s/[a-zA-Z0-9]*' "$sshx_log" | head -n 1)
+    rm -f "$sshx_log"
+
+    clear
+    echo -e "${GREEN}==========================================================${NC}"
+    echo -e "🎉       DEUP GAMING & DXD LABS - VM BOOTED UP!           "
+    echo -e "${GREEN}==========================================================${NC}"
+    echo -e "${WHITE}👤 Username : ${CYAN}${USER_NAME:-ubuntu}${NC}"
+    echo -e "${WHITE}🔑 Password : ${CYAN}${USER_PASS:-1234}${NC}"
+    echo -e "${WHITE}⚙️  Resources: ${CYAN}${RAM_GB:-8}GB RAM | ${CPU_CORES:-4} Cores${NC}"
+    echo -e "${WHITE}🚀 Local SSH Port: ${CYAN}2223${NC}"
+    echo -e "${RED}----------------------------------------------------------${NC}"
+    if [ ! -z "$SSHX_URL" ]; then
+        echo -e "${YELLOW}🔥 LIVE WEB TERMINAL ACCESS LINK (Copy & Paste in Browser):${NC}"
+        echo -e "${GREEN}👉 $SSHX_URL 👈${NC}"
+    else
+        echo -e "${RED}⚠️ SSHX link generation timed out, but local instance is running.${NC}"
+    fi
+    echo -e "${RED}----------------------------------------------------------${NC}"
+    echo -e "${WHITE}👉 Manual Command : ssh ${USER_NAME:-ubuntu}@localhost -p 2223${NC}"
+    echo -e "${GREEN}==========================================================${NC}"
+    echo ""
+    
+    # Run QEMU Machine
     qemu-system-x86_64 \
         -m ${RAM_GB:-8}G \
         -smp ${CPU_CORES:-4} \
@@ -174,80 +216,29 @@ boot_ubuntu() {
         -net user,hostfwd=tcp::2223-:22
 }
 
-# OPTION 2: WINDOWS 11 WORKSTATION ARCHITECTURE
-create_windows() {
-    clear
-    echo -e "${BLUE}==========================================================${NC}"
-    echo -e "${WHITE}🪟 WINDOWS 11 ENVIRONMENT SPECIFICATIONS${NC}"
-    echo -e "${BLUE}==========================================================${NC}"
-    get_specs
-    
-    if [ ! -f "windows11.qcow2" ]; then
-        echo -e "${YELLOW}💽 Initializing Virtual Disk for Windows 11...${NC}"
-        qemu-img create -f qcow2 windows11.qcow2 40G > /dev/null 2>&1
-    fi
-    
-    if [ ! -f "windows11.iso" ]; then
-        echo -e "${RED}❌ [ALERT] Please make sure 'windows11.iso' is present in this directory before boot!${NC}"
-        echo -ne "${YELLOW}Press [Enter] to try booting anyway or setup space... ${NC}"
-        read
-    fi
-    
-    echo "OS_MODE=windows" > .vps_env
-    echo "RAM_GB=$RAM_GB" >> .vps_env
-    echo "CPU_CORES=$CPU_CORES" >> .vps_env
-    
-    boot_windows
-}
-
-boot_windows() {
-    clear
-    echo -e "${BLUE}==========================================================${NC}"
-    type_effect "👹 WINDOWS MATRIX SYNCHRONIZED! BOOTING ENVIRONMENT!" 0.03
-    echo -e "${BLUE}==========================================================${NC}"
-    echo ""
-    echo -e "${WHITE}⚙️  Allocated Resources : ${CYAN}${RAM_GB:-8}GB RAM | ${CPU_CORES:-4} Cores${NC}"
-    echo -e "${WHITE}🚀 VNC Display Console : ${CYAN}Port 5900 (Use VNC Viewer to connect)${NC}"
-    echo -e "${WHITE}🚀 RDP Windows Port    : ${CYAN}Port 3389 (Forwarded dynamically)${NC}"
-    echo -e "${BLUE}==========================================================${NC}"
-    echo ""
-    
-    # Windows virtualization console command base
-    qemu-system-x86_64 \
-        -m ${RAM_GB:-8}G \
-        -smp ${CPU_CORES:-4} \
-        -hda windows11.qcow2 \
-        -cdrom windows11.iso \
-        -vnc :0 \
-        -net nic,model=e1000 \
-        -net user,hostfwd=tcp::3389-:3389
-}
-
-# OPTION 3: RESTART MANAGER BASED ON PREVIOUS CACHE
+# RESTART EXISTING VPS
 restart_vps() {
-    if [ -f ".vps_env" ]; then
-        source .vps_env
-        if [ "$OS_MODE" == "ubuntu" ]; then
-            boot_ubuntu
-        elif [ "$OS_MODE" == "windows" ]; then
-            boot_windows
-        fi
+    if [ -f "ubuntu22.qcow2" ] && [ -f "seed.img" ]; then
+        echo -e "${GREEN}🔄 Restarting existing server architecture...${NC}"
+        sleep 1
+        boot_qemu
     else
-        echo -e "${RED}❌ No existing architecture configuration found. Select Option 1 or 2 first!${NC}"
+        echo -e "${RED}❌ No existing system installation found! Please select Option 1 first to build a VPS.${NC}"
         sleep 3
         show_menu
     fi
 }
 
-# OPTION 4: WIPE ALL STORAGE FRESH
+# CLEAN AND DELETE VPS FILES
 clean_vps() {
-    echo -e "${RED}⚠️ Erasing all system drives, setups and OS storage blocks...${NC}"
-    rm -rf user-data seed.img ubuntu22.qcow2 windows11.qcow2 .vps_env
+    echo -e "${RED}⚠️ Cleaning up workspace environment and caches...${NC}"
+    rm -rf user-data seed.img ubuntu22.qcow2 .vps_env
+    pkill sshx > /dev/null 2>&1
     sleep 1
-    echo -e "${GREEN}✅ Workspace successfully wiped fresh!${NC}"
+    echo -e "${GREEN}✅ Workspace is completely wiped fresh!${NC}"
     sleep 2
     show_menu
 }
 
-# INITIATE AUTOMATION TRIGGER
+# TRIGGER CODE BASE AT START
 show_menu
